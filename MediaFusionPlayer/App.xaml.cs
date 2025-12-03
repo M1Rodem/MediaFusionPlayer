@@ -1,5 +1,4 @@
-﻿// App.xaml.cs — финальная временная версия
-using MediaFusionPlayer.Core.Interfaces;
+﻿using MediaFusionPlayer.Core.Interfaces;
 using MediaFusionPlayer.Infrastructure.FileServices;
 using MediaFusionPlayer.Infrastructure.Services;
 using MediaFusionPlayer.Presentation.ViewModels;
@@ -22,8 +21,11 @@ namespace MediaFusionPlayer
                     services.AddSingleton<IFileService, FileService>();
                     services.AddSingleton<IPlaylistService, PlaylistService>();
                     services.AddSingleton<IMediaPlayerService, MediaPlayerService>();
+                    services.AddSingleton<IVideoPlayerService, VideoPlayerService>();
+                    services.AddSingleton<VideoSyncService>(); // Добавляем VideoSyncService
                     services.AddSingleton<MainViewModel>();
 
+                    // Регистрируем MainWindow
                     services.AddSingleton<Presentation.Views.MainWindow>(sp => new Presentation.Views.MainWindow
                     {
                         DataContext = sp.GetRequiredService<MainViewModel>()
@@ -32,13 +34,17 @@ namespace MediaFusionPlayer
                 .Build();
         }
 
-
         protected override async void OnStartup(StartupEventArgs e)
         {
             await _host.StartAsync();
-            _host.Services.GetRequiredService<Presentation.Views.MainWindow>().Show();
-            base.OnStartup(e);
 
+            // Инициализируем VideoSyncService
+            var syncService = _host.Services.GetRequiredService<VideoSyncService>();
+
+            var mainWindow = _host.Services.GetRequiredService<Presentation.Views.MainWindow>();
+            mainWindow.Show();
+
+            base.OnStartup(e);
         }
 
         protected override async void OnExit(ExitEventArgs e)

@@ -2,6 +2,7 @@
 using MediaFusionPlayer.Core.Models;
 using NAudio.Wave;
 using System;
+using System.IO;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
@@ -34,6 +35,27 @@ namespace MediaFusionPlayer.Infrastructure.Services
                 }
             }
         }
+
+        // НОВОЕ: свойства для видео
+        private bool _isVideo = false;
+        public bool IsVideo
+        {
+            get => _isVideo;
+            private set
+            {
+                if (_isVideo != value)
+                {
+                    _isVideo = value;
+                    Application.Current.Dispatcher.BeginInvoke(() =>
+                    {
+                        IsVideoChanged?.Invoke(this, value);
+                    });
+                }
+            }
+        }
+
+        private string? _videoPath = null;
+        public string? VideoPath => _videoPath;
 
         public bool IsSeeking
         {
@@ -69,6 +91,7 @@ namespace MediaFusionPlayer.Infrastructure.Services
         public event EventHandler<TimeSpan>? PositionChanged;
         public event EventHandler<PlaylistItem>? TrackFinished;
         public event EventHandler<bool>? IsSeekingChanged;
+        public event EventHandler<bool>? IsVideoChanged; // НОВОЕ
 
         private string? _currentFilePath;
         private TimeSpan _pausedPosition = TimeSpan.Zero;
@@ -110,7 +133,7 @@ namespace MediaFusionPlayer.Infrastructure.Services
                 return;
 
             var pos = _audioFile.CurrentTime;
-            
+
             // Проверяем завершение трека
             if (!_trackFinished && pos.TotalSeconds >= _audioFile.TotalTime.TotalSeconds - 0.1)
             {
@@ -123,6 +146,20 @@ namespace MediaFusionPlayer.Infrastructure.Services
             }
 
             PositionChanged?.Invoke(this, pos);
+        }
+
+        // НОВОЕ: метод определения видеофайлов
+        private bool IsVideoFile(string filePath)
+        {
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            var videoExtensions = new[]
+            {
+                ".mp4", ".mkv", ".avi", ".mov", ".wmv",
+                ".flv", ".webm", ".m4v", ".mpg", ".mpeg",
+                ".ts", ".m2ts", ".3gp", ".ogv", ".mts"
+            };
+
+            return videoExtensions.Contains(extension);
         }
 
         public void Play(PlaylistItem track)
@@ -139,6 +176,11 @@ namespace MediaFusionPlayer.Infrastructure.Services
                 InternalStop();
                 DisposeCurrent();
             }
+
+            // Определяем тип файла
+            bool isVideo = IsVideoFile(track.FilePath);
+            IsVideo = isVideo;
+            _videoPath = isVideo ? track.FilePath : null;
 
             try
             {
@@ -182,6 +224,8 @@ namespace MediaFusionPlayer.Infrastructure.Services
             {
                 System.Diagnostics.Debug.WriteLine($"Ошибка воспроизведения: {ex.Message}");
                 State = MediaPlaybackState.Stopped;
+                IsVideo = false;
+                _videoPath = null;
                 Application.Current.Dispatcher.BeginInvoke(() =>
                 {
                     TrackFinished?.Invoke(this, track);
@@ -191,7 +235,7 @@ namespace MediaFusionPlayer.Infrastructure.Services
 
         public void Pause()
         {
-            if (State != MediaPlaybackState.Playing || _wavePlayer == null || _audioFile == null) 
+            if (State != MediaPlaybackState.Playing || _wavePlayer == null || _audioFile == null)
                 return;
 
             // Запоминаем позицию перед паузой
@@ -216,6 +260,8 @@ namespace MediaFusionPlayer.Infrastructure.Services
             _currentFilePath = null;
             _currentTrack = null;
             _trackFinished = false;
+            IsVideo = false;
+            _videoPath = null;
             State = MediaPlaybackState.Stopped;
 
             Application.Current.Dispatcher.BeginInvoke(() =>
@@ -240,7 +286,7 @@ namespace MediaFusionPlayer.Infrastructure.Services
         }
 
         public void BeginSeek() => IsSeeking = true;
-        
+
         public void EndSeek(TimeSpan position)
         {
             Seek(position);
@@ -261,6 +307,8 @@ namespace MediaFusionPlayer.Infrastructure.Services
                 Application.Current.Dispatcher.BeginInvoke(() =>
                 {
                     State = MediaPlaybackState.Stopped;
+                    IsVideo = false;
+                    _videoPath = null;
                     PositionChanged?.Invoke(this, TimeSpan.Zero);
                     TrackFinished?.Invoke(this, _currentTrack!);
                 });
@@ -277,7 +325,7 @@ namespace MediaFusionPlayer.Infrastructure.Services
                 _wavePlayer.Dispose();
                 _wavePlayer = null;
             }
-            
+
             _audioFile?.Dispose();
             _audioFile = null;
         }
@@ -291,7 +339,7 @@ namespace MediaFusionPlayer.Infrastructure.Services
             {
                 Stop();
                 DisposeCurrent();
-                
+
                 if (_positionTimer != null)
                 {
                     _positionTimer.Tick -= PositionTimer_Tick;

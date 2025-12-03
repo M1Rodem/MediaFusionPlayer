@@ -1,148 +1,134 @@
-﻿//using System;
-//using LibVLCSharp.Shared;
-//using MediaFusionPlayer.Core.Interfaces;
-//using System.Windows;
-//using System.Windows.Interop;
+﻿using LibVLCSharp.Shared;
+using MediaFusionPlayer.Core.Interfaces;
+using System;
+using System.IO;
+using System.Windows;
 
-//namespace MediaFusionPlayer.Infrastructure.Services
-//{
-//    public class VideoPlayerService : IVideoPlayerService
-//    {
-//        private LibVLC? _libVLC;
-//        private MediaPlayer? _mediaPlayer;
-//        private IntPtr _windowHandle;
-//        private bool _isInitialized = false;
-//        private bool _isDisposed = false;
+namespace MediaFusionPlayer.Infrastructure.Services
+{
+    public sealed class VideoPlayerService : IVideoPlayerService
+    {
+        private LibVLC? _libVlc;
+        private MediaPlayer? _mediaPlayer;
+        private Media? _currentMedia;
+        private string? _currentVideoPath;
 
-//        public bool IsVideoPlaying => _mediaPlayer?.IsPlaying ?? false;
+        public bool IsPlaying => _mediaPlayer?.IsPlaying ?? false;
+        public bool IsInitialized => _libVlc != null;
+        public string? CurrentVideoPath => _currentVideoPath;
+        public LibVLC? LibVLC => _libVlc; // Реализуем свойство
 
-//        public event EventHandler<bool>? VideoStateChanged;
+        public event EventHandler<Exception>? VideoError;
 
-//        public VideoPlayerService()
-//        {
-//            try
-//            {
-//                Core.Initialize();
-//                _libVLC = new LibVLC("--no-video-title-show");
-//            }
-//            catch (Exception ex)
-//            {
-//                MessageBox.Show($"Ошибка инициализации LibVLC: {ex.Message}", "Ошибка",
-//                    MessageBoxButton.OK, MessageBoxImage.Error);
-//            }
-//        }
+        public VideoPlayerService()
+        {
+            // Инициализация будет отложенной
+        }
 
-//        public void InitializeVideo(string videoFilePath, IntPtr windowHandle)
-//        {
-//            if (_isDisposed || _libVLC == null) return;
+        public void Initialize()
+        {
+            try
+            {
+                if (!IsInitialized)
+                {
+                    // Инициализация ядра VLC
+                    LibVLCSharp.Shared.Core.Initialize();
 
-//            _windowHandle = windowHandle;
+                    // Отключаем аудио в VLC, т.к. звук будет через NAudio
+                    _libVlc = new LibVLC(":no-audio");
 
-//            // Очищаем предыдущий медиаплеер
-//            _mediaPlayer?.Stop();
-//            _mediaPlayer?.Dispose();
+                    _mediaPlayer = new MediaPlayer(_libVlc);
+                }
+            }
+            catch (Exception ex)
+            {
+                VideoError?.Invoke(this, ex);
+                System.Diagnostics.Debug.WriteLine($"Ошибка инициализации VLC: {ex.Message}");
+            }
+        }
 
-//            // Создаем новый медиаплеер
-//            _mediaPlayer = new MediaPlayer(_libVLC);
-//            _mediaPlayer.SetHWND(_windowHandle);
+        public void PlayVideo(string videoPath)
+        {
+            if (!File.Exists(videoPath) || _libVlc == null || _mediaPlayer == null)
+                return;
 
-//            // Создаем медиа из файла
-//            using var media = new Media(_libVLC, videoFilePath, FromType.FromPath);
-//            _mediaPlayer.Media = media;
+            try
+            {
+                StopVideo();
 
-//            _isInitialized = true;
+                _currentVideoPath = videoPath;
 
-//            // Подписываемся на события
-//            _mediaPlayer.Playing += (s, e) => OnVideoStateChanged(true);
-//            _mediaPlayer.Paused += (s, e) => OnVideoStateChanged(false);
-//            _mediaPlayer.Stopped += (s, e) => OnVideoStateChanged(false);
-//            _mediaPlayer.EndReached += (s, e) => OnVideoStateChanged(false);
-//        }
+                // Добавляем параметры для лучшей производительности
+                var options = new[]
+                {
+            ":no-audio",
+            ":avcodec-hw=dxva2", // Аппаратное ускорение
+            ":network-caching=300", // Кэширование
+            ":clock-jitter=0",
+            ":clock-synchro=0"
+        };
 
-//        public void PlayVideo()
-//        {
-//            if (!_isInitialized || _mediaPlayer == null) return;
+                _currentMedia = new Media(_libVlc, videoPath);
+                foreach (var option in options)
+                {
+                    _currentMedia.AddOption(option);
+                }
 
-//            if (_mediaPlayer.IsPlaying)
-//                return;
+                _mediaPlayer.Media = _currentMedia;
+                _mediaPlayer.Play();
+            }
+            catch (Exception ex)
+            {
+                VideoError?.Invoke(this, ex);
+                System.Diagnostics.Debug.WriteLine($"Ошибка воспроизведения видео: {ex.Message}");
+            }
+        }
 
-//            _mediaPlayer.Play();
-//        }
+        public void PauseVideo()
+        {
+            if (_mediaPlayer?.IsPlaying == true)
+            {
+                _mediaPlayer.Pause();
+            }
+        }
 
-//        public void PauseVideo()
-//        {
-//            if (!_isInitialized || _mediaPlayer == null) return;
+        public void StopVideo()
+        {
+            _currentVideoPath = null;
 
-//            if (_mediaPlayer.IsPlaying)
-//                _mediaPlayer.Pause();
-//        }
+            if (_mediaPlayer != null)
+            {
+                _mediaPlayer.Stop();
+                _currentMedia?.Dispose();
+                _currentMedia = null;
+            }
+        }
 
-//        public void StopVideo()
-//        {
-//            if (!_isInitialized || _mediaPlayer == null) return;
+        public void SeekVideo(TimeSpan position)
+        {
+            if (_mediaPlayer != null && _mediaPlayer.IsSeekable)
+            {
+                _mediaPlayer.Time = (long)position.TotalMilliseconds;
+            }
+        }
 
-//            _mediaPlayer.Stop();
-//            _mediaPlayer.Media?.Dispose();
-//            _mediaPlayer.Media = null;
-//            _isInitialized = false;
-//        }
+        public void SetVideoOutput(IntPtr handle)
+        {
+            if (_mediaPlayer != null)
+            {
+                _mediaPlayer.Hwnd = handle;
+            }
+        }
 
-//        public void SeekVideo(TimeSpan position)
-//        {
-//            if (!_isInitialized || _mediaPlayer?.Media == null) return;
+        public void Dispose()
+        {
+            StopVideo();
 
-//            _mediaPlayer.SeekTo(position);
-//        }
+            _mediaPlayer?.Dispose();
+            _libVlc?.Dispose();
 
-//        public void SetVideoVolume(float volume)
-//        {
-//            if (!_isInitialized || _mediaPlayer == null) return;
-
-//            _mediaPlayer.Volume = (int)(volume * 100);
-//        }
-
-//        public TimeSpan GetVideoDuration()
-//        {
-//            if (!_isInitialized || _mediaPlayer?.Media == null)
-//                return TimeSpan.Zero;
-
-//            var duration = _mediaPlayer.Media.Duration;
-//            return duration > 0 ? TimeSpan.FromMilliseconds(duration) : TimeSpan.Zero;
-//        }
-
-//        public TimeSpan GetVideoPosition()
-//        {
-//            if (!_isInitialized || _mediaPlayer?.Media == null)
-//                return TimeSpan.Zero;
-
-//            var position = _mediaPlayer.Position;
-//            var duration = GetVideoDuration();
-
-//            return duration.TotalMilliseconds > 0
-//                ? TimeSpan.FromMilliseconds(position * duration.TotalMilliseconds)
-//                : TimeSpan.Zero;
-//        }
-
-//        private void OnVideoStateChanged(bool isPlaying)
-//        {
-//            Application.Current.Dispatcher.BeginInvoke(() =>
-//            {
-//                VideoStateChanged?.Invoke(this, isPlaying);
-//            });
-//        }
-
-//        public void Dispose()
-//        {
-//            if (_isDisposed) return;
-//            _isDisposed = true;
-
-//            StopVideo();
-
-//            _mediaPlayer?.Dispose();
-//            _mediaPlayer = null;
-
-//            _libVLC?.Dispose();
-//            _libVLC = null;
-//        }
-//    }
-//}
+            _mediaPlayer = null;
+            _libVlc = null;
+        }
+    }
+}

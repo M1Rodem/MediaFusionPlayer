@@ -17,6 +17,8 @@ namespace MediaFusionPlayer.Core.Interfaces
         TimeSpan Position { get; }
         TimeSpan Duration { get; }
         bool IsSeeking { get; }
+        bool IsVideo { get; } // НОВОЕ: флаг что это видео
+        string? VideoPath { get; } // НОВОЕ: путь к видео
 
         void Play(PlaylistItem track);
         void Pause();
@@ -29,5 +31,6 @@ namespace MediaFusionPlayer.Core.Interfaces
         event EventHandler<TimeSpan> PositionChanged;
         event EventHandler<PlaylistItem> TrackFinished;
         event EventHandler<bool> IsSeekingChanged;
+        event EventHandler<bool> IsVideoChanged; // НОВОЕ: событие смены типа
     }
 }

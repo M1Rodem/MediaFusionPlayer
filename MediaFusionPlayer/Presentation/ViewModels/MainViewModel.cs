@@ -15,6 +15,7 @@ namespace MediaFusionPlayer.Presentation.ViewModels
         private readonly IFileService _fileService;
         private readonly IPlaylistService _playlistService;
         private readonly IMediaPlayerService _mediaPlayer;
+        private readonly IVideoPlayerService _videoService; // НОВОЕ
 
         public ObservableCollection<PlaylistItem> Playlist => _playlistService.Items;
 
@@ -45,6 +46,23 @@ namespace MediaFusionPlayer.Presentation.ViewModels
             }
         }
 
+        // НОВОЕ: свойства для видео
+        private bool _isVideo;
+        public bool IsVideo
+        {
+            get => _isVideo;
+            private set => SetProperty(ref _isVideo, value);
+        }
+
+        private string? _videoPath;
+        public string? VideoPath
+        {
+            get => _videoPath;
+            private set => SetProperty(ref _videoPath, value);
+        }
+
+        public IVideoPlayerService VideoService => _videoService; // Для привязки в XAML
+
         public ICommand AddFilesCommand { get; }
         public ICommand PlayPauseCommand { get; }
         public ICommand StopCommand { get; }
@@ -54,11 +72,13 @@ namespace MediaFusionPlayer.Presentation.ViewModels
         public MainViewModel(
             IFileService fileService,
             IPlaylistService playlistService,
-            IMediaPlayerService mediaPlayer)
+            IMediaPlayerService mediaPlayer,
+            IVideoPlayerService videoService) // НОВЫЙ параметр
         {
             _fileService = fileService;
             _playlistService = playlistService;
             _mediaPlayer = mediaPlayer;
+            _videoService = videoService;
 
             AddFilesCommand = new RelayCommand(_ => AddFiles());
             PlayPauseCommand = new RelayCommand(_ => PlayPause(), _ => CurrentTrack != null);
@@ -72,6 +92,29 @@ namespace MediaFusionPlayer.Presentation.ViewModels
             _mediaPlayer.PositionChanged += OnPositionChanged;
             _mediaPlayer.TrackFinished += (s, e) => _playlistService.MoveToNext();
             _mediaPlayer.IsSeekingChanged += (s, seeking) => { };
+
+            // НОВОЕ: подписка на изменение типа медиа
+            _mediaPlayer.IsVideoChanged += OnIsVideoChanged;
+        }
+
+        private void OnIsVideoChanged(object? sender, bool isVideo)
+        {
+            IsVideo = isVideo;
+
+            if (isVideo && !string.IsNullOrEmpty(_mediaPlayer.VideoPath))
+            {
+                VideoPath = _mediaPlayer.VideoPath;
+                // Запускаем видео через VideoService
+                _videoService.PlayVideo(_mediaPlayer.VideoPath);
+
+                // Синхронизируем позицию
+                _videoService.SeekVideo(_mediaPlayer.Position);
+            }
+            else
+            {
+                VideoPath = null;
+                _videoService.StopVideo();
+            }
         }
 
         private void OnPlaylistTrackChanged(PlaylistItem? track)
@@ -101,20 +144,34 @@ namespace MediaFusionPlayer.Presentation.ViewModels
             {
                 CurrentPosition = position;
             }
+
+            // Синхронизируем видео если оно играет
+            if (IsVideo && _videoService.IsPlaying)
+            {
+                _videoService.SeekVideo(position);
+            }
         }
 
         private void PlayPause()
         {
             if (_mediaPlayer.State == MediaPlaybackState.Playing)
+            {
                 _mediaPlayer.Pause();
+                if (IsVideo) _videoService.PauseVideo();
+            }
             else if (CurrentTrack != null)
+            {
                 _mediaPlayer.Play(CurrentTrack);
+            }
         }
 
         private void Stop()
         {
             _mediaPlayer.Stop();
+            _videoService.StopVideo();
             CurrentPosition = TimeSpan.Zero;
+            IsVideo = false;
+            VideoPath = null;
         }
 
         private async void AddFiles()
@@ -138,6 +195,12 @@ namespace MediaFusionPlayer.Presentation.ViewModels
             _mediaPlayer.BeginSeek();
             _mediaPlayer.Seek(position);
             _mediaPlayer.EndSeek(position);
+
+            // Синхронизируем видео
+            if (IsVideo)
+            {
+                _videoService.SeekVideo(position);
+            }
         }
     }
 }

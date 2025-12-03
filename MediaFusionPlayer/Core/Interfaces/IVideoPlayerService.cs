@@ -1,19 +1,22 @@
-﻿using System;
+﻿using LibVLCSharp.Shared;
+using System;
 
 namespace MediaFusionPlayer.Core.Interfaces
 {
     public interface IVideoPlayerService : IDisposable
     {
-        bool IsVideoPlaying { get; }
-        event EventHandler<bool> VideoStateChanged;
+        bool IsPlaying { get; }
+        bool IsInitialized { get; }
+        string? CurrentVideoPath { get; }
+        LibVLC? LibVLC { get; }
 
-        void InitializeVideo(string videoFilePath, IntPtr windowHandle);
-        void PlayVideo();
+        void Initialize();
+        void PlayVideo(string videoPath);
         void PauseVideo();
         void StopVideo();
         void SeekVideo(TimeSpan position);
-        void SetVideoVolume(float volume); // 0-1
-        TimeSpan GetVideoDuration();
-        TimeSpan GetVideoPosition();
+        void SetVideoOutput(IntPtr handle);
+
+        event EventHandler<Exception>? VideoError;
     }
 }
