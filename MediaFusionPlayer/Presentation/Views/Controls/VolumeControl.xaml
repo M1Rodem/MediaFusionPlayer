@@ -1,0 +1,18 @@
+﻿<UserControl x:Class="MediaFusionPlayer.Presentation.Views.Controls.VolumeControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Margin="20,0">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Text="Volume" Foreground="White" VerticalAlignment="Center" FontSize="14"/>
+
+        <Slider Grid.Column="1" Margin="15,0" VerticalAlignment="Center"
+                Minimum="0" Maximum="1" 
+                Value="{Binding Volume, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                SmallChange="0.01" LargeChange="0.1"
+                IsMoveToPointEnabled="True"/>
+    </Grid>
+</UserControl>
