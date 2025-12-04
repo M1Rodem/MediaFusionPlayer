@@ -16,6 +16,7 @@ namespace MediaFusionPlayer.Presentation.ViewModels
         private readonly IPlaylistService _playlistService;
         private readonly IMediaPlayerService _mediaPlayer;
         private readonly IVideoPlayerService _videoService;
+        private readonly IEqualizerService _equalizerService;
 
         public ObservableCollection<PlaylistItem> Playlist => _playlistService.Items;
 
@@ -69,6 +70,7 @@ namespace MediaFusionPlayer.Presentation.ViewModels
         }
 
         public IVideoPlayerService VideoService => _videoService;
+        public IEqualizerService EqualizerService => _equalizerService;
 
         public ICommand AddFilesCommand { get; }
         public ICommand PlayPauseCommand { get; }
@@ -80,12 +82,14 @@ namespace MediaFusionPlayer.Presentation.ViewModels
             IFileService fileService,
             IPlaylistService playlistService,
             IMediaPlayerService mediaPlayer,
-            IVideoPlayerService videoService)
+            IVideoPlayerService videoService,
+            IEqualizerService equalizerService) // Добавляем equalizerService
         {
             _fileService = fileService;
             _playlistService = playlistService;
             _mediaPlayer = mediaPlayer;
             _videoService = videoService;
+            _equalizerService = equalizerService; // Сохраняем
 
             AddFilesCommand = new RelayCommand(_ => AddFiles());
             PlayPauseCommand = new RelayCommand(_ => PlayPause(), _ => CurrentTrack != null);
@@ -99,6 +103,8 @@ namespace MediaFusionPlayer.Presentation.ViewModels
             _mediaPlayer.TrackFinished += (s, e) => _playlistService.MoveToNext();
             _mediaPlayer.IsVideoChanged += OnIsVideoChanged;
         }
+
+        public IEqualizerService GetEqualizerService() => _equalizerService;
 
         private void OnPlaybackStateChanged(object? sender, MediaPlaybackState state)
         {

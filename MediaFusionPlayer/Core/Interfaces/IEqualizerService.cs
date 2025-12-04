@@ -1,4 +1,5 @@
-﻿using System;
+﻿using NAudio.Dsp;
+using System;
 using System.Collections.Generic;
 
 namespace MediaFusionPlayer.Core.Interfaces
@@ -16,6 +17,11 @@ namespace MediaFusionPlayer.Core.Interfaces
         void ApplyPreset(string name);
         void SetBandGain(int index, float gainDb);
         void ResetToFlat();
+        IEnumerable<BiQuadFilter> CreateFilters(int sampleRate);
         event EventHandler? BandsChanged;
+
+        // ДОБАВЛЯЕМ эти важные свойства:
+        bool IsEnabled { get; set; }
+        bool IsVideoPlaying { get; set; } // Для автоматического отключения эквалайзера при видео
     }
 }

@@ -92,6 +92,14 @@ namespace MediaFusionPlayer.Presentation.Views.Controls
             }
         }
 
+        public static readonly DependencyProperty SeekCommandProperty =
+            DependencyProperty.Register(nameof(SeekCommand), typeof(ICommand), typeof(ProgressSlider));
+
+        public ICommand SeekCommand
+        {
+            get => (ICommand)GetValue(SeekCommandProperty);
+            set => SetValue(SeekCommandProperty, value);
+        }
         private void Seek(Point p)
         {
             double x = Math.Clamp(p.X, 0, TrackGrid.ActualWidth);
@@ -99,6 +107,11 @@ namespace MediaFusionPlayer.Presentation.Views.Controls
             TimeSpan pos = TimeSpan.FromSeconds(ratio * CurrentDuration.TotalSeconds);
             CurrentPosition = pos;
             UpdateVisual();
+
+            // Вызываем команду если она есть
+            if (SeekCommand?.CanExecute(pos) == true)
+                SeekCommand.Execute(pos);
+
             SeekRequested?.Invoke(this, pos);
         }
 

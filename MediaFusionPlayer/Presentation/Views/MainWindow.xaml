@@ -19,6 +19,37 @@
                 <!-- ЭТОТ ПУТЬ РАБОТАЕТ ВСЕГДА, если файл в проекте имеет Build Action = Page или Resource -->
                 <ResourceDictionary Source="/MediaFusionPlayer;component/Presentation/Resources/Styles.xaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- Стиль для кнопки эквалайзера -->
+            <Style x:Key="EqualizerButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="#AAA"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FontSize" Value="18"/>
+                <Setter Property="Padding" Value="12"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}" 
+                                    CornerRadius="8" 
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#333"/>
+                        <Setter Property="Foreground" Value="White"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <!-- Конвертер для значков Play/Pause -->
+            <conv:PlayPauseIconConverter x:Key="PlayPauseIconConverter"/>
+            <conv:TimeSpanToStringConverter x:Key="TimeSpanConverter"/>
         </ResourceDictionary>
     </Window.Resources>
 
@@ -75,7 +106,8 @@
                                 FontWeight="SemiBold"
                                 Background="#1DB954"
                                 Foreground="White"
-                                BorderThickness="0">
+                                BorderThickness="0"
+                                Cursor="Hand">
                             <Button.Style>
                                 <Style TargetType="Button">
                                     <Setter Property="Template">
@@ -157,16 +189,48 @@
                             <Image.Clip>
                                 <RectangleGeometry RadiusX="12" RadiusY="12" Rect="0,0,76,76"/>
                             </Image.Clip>
+                            <Image.Style>
+                                <Style TargetType="Image">
+                                    <Setter Property="Opacity" Value="1"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CurrentTrack}" Value="{x:Null}">
+                                            <Setter Property="Opacity" Value="0.3"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Image.Style>
                         </Image>
                         <StackPanel Margin="18,0" VerticalAlignment="Center" Width="270">
                             <TextBlock Text="{Binding CurrentTrack.DisplayName}" 
                                        Foreground="White" 
                                        FontSize="16" 
                                        FontWeight="SemiBold"
-                                       TextTrimming="CharacterEllipsis"/>
+                                       TextTrimming="CharacterEllipsis">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="Нет выбранного трека"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentTrack}" Value="{x:Null}">
+                                                <Setter Property="Foreground" Value="#888"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                             <TextBlock Text="{Binding CurrentTrack.Artist}" 
                                        Foreground="#B3B3B3" 
-                                       FontSize="14"/>
+                                       FontSize="14">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="Выберите трек из списка"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentTrack}" Value="{x:Null}">
+                                                <Setter Property="Foreground" Value="#666"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </StackPanel>
                     </StackPanel>
 
@@ -177,25 +241,65 @@
                             <RowDefinition Height="40"/>
                         </Grid.RowDefinitions>
 
-                        <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
-                            <Button Content="Previous" Command="{Binding PreviousCommand}" Style="{StaticResource ModernControlButton}"/>
-                            <Button Command="{Binding PlayPauseCommand}" Style="{StaticResource PlayPauseButtonStyle}" Margin="32,0"/>
-                            <Button Content="Next" Command="{Binding NextCommand}" Style="{StaticResource ModernControlButton}"/>
+                        <StackPanel Grid.Row="0" 
+                                    Orientation="Horizontal" 
+                                    HorizontalAlignment="Center" 
+                                    Margin="0,0,0,16">
+                            <Button Content="⏮" 
+                                    Command="{Binding PreviousCommand}" 
+                                    Style="{StaticResource ModernControlButton}"
+                                    ToolTip="Предыдущий трек"/>
+
+                            <Button Command="{Binding PlayPauseCommand}" 
+                                    Style="{StaticResource PlayPauseButtonStyle}" 
+                                    Margin="32,0"
+                                    ToolTip="Воспроизведение/Пауза">
+                                <Button.Content>
+                                    <TextBlock Text="{Binding IsPlaying, Converter={StaticResource PlayPauseIconConverter}}"
+                                               FontSize="24"/>
+                                </Button.Content>
+                            </Button>
+
+                            <Button Content="⏭" 
+                                    Command="{Binding NextCommand}" 
+                                    Style="{StaticResource ModernControlButton}"
+                                    ToolTip="Следующий трек"/>
                         </StackPanel>
 
-                        <!-- Прогресс-слайдер теперь виден -->
+                        <!-- Прогресс-слайдер -->
+                        <!-- Должно быть вот так (строка 270): -->
                         <controls:ProgressSlider Grid.Row="1"
                             CurrentPosition="{Binding CurrentPosition, Mode=TwoWay}"
                             CurrentDuration="{Binding CurrentDuration}"
-                            SeekRequested="ProgressSlider_SeekRequested"
+                            SeekCommand="{Binding SeekToCommand}"
                             Margin="60,0"/>
                     </Grid>
 
-                    <!-- Правая часть: громкость + другие кнопки -->
-                    <controls:VolumeControl Grid.Column="2" 
-                                            HorizontalAlignment="Right" 
-                                            VerticalAlignment="Center"
-                                            Width="280"/>
+                    <!-- Правая часть: громкость + кнопка эквалайзера -->
+                    <StackPanel Grid.Column="2" 
+                                HorizontalAlignment="Right" 
+                                VerticalAlignment="Center"
+                                Orientation="Horizontal"
+                                Width="380">
+
+                        <!-- Кнопка эквалайзера -->
+                        <!-- Где-то рядом с другими кнопками управления -->
+                        <Button x:Name="EqualizerButton"
+                                Content="🎛️"
+                                ToolTip="Эквалайзер"
+                                Width="40"
+                                Height="40"
+                                FontSize="18"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Foreground="White"
+                                Click="EqualizerButton_Click"/>
+
+                        <!-- Контроль громкости -->
+                        <controls:VolumeControl HorizontalAlignment="Right" 
+                                                VerticalAlignment="Center"
+                                                Width="280"/>
+                    </StackPanel>
                 </Grid>
             </Border>
         </Grid>

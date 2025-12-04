@@ -1,9 +1,10 @@
 ﻿using MediaFusionPlayer.Core.Interfaces;
 using MediaFusionPlayer.Core.Models;
 using NAudio.Wave;
+using NAudio.Dsp;
 using System;
 using System.IO;
-using System.Threading;
+using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -13,11 +14,15 @@ namespace MediaFusionPlayer.Infrastructure.Services
     {
         private IWavePlayer? _wavePlayer;
         private AudioFileReader? _audioFile;
+        private EqualizingSampleProvider? _equalizerProvider;
         private DispatcherTimer? _positionTimer;
         private readonly object _syncLock = new();
         private bool _isDisposed = false;
         private bool _isSeeking = false;
         private bool _trackFinished = false;
+
+        // Добавляем зависимость от эквалайзера
+        private readonly IEqualizerService _equalizerService;
 
         private MediaPlaybackState _state = MediaPlaybackState.Stopped;
         public MediaPlaybackState State
@@ -97,9 +102,14 @@ namespace MediaFusionPlayer.Infrastructure.Services
         private TimeSpan _pausedPosition = TimeSpan.Zero;
         private PlaylistItem? _currentTrack;
 
-        public MediaPlayerService()
+        // Конструктор с внедрением зависимости
+        public MediaPlayerService(IEqualizerService equalizerService)
         {
+            _equalizerService = equalizerService ?? throw new ArgumentNullException(nameof(equalizerService));
             InitializeTimer();
+
+            // Подписываемся на изменения эквалайзера
+            _equalizerService.BandsChanged += OnEqualizerBandsChanged;
         }
 
         private void InitializeTimer()
@@ -162,6 +172,20 @@ namespace MediaFusionPlayer.Infrastructure.Services
             return videoExtensions.Contains(extension);
         }
 
+        // НОВОЕ: метод обновления фильтров эквалайзера
+        private void UpdateEqualizerFilters()
+        {
+            if (_equalizerProvider != null)
+            {
+                _equalizerProvider.UpdateFilters(_equalizerService.CreateFilters(_equalizerProvider.WaveFormat.SampleRate).ToArray());
+            }
+        }
+
+        private void OnEqualizerBandsChanged(object? sender, EventArgs e)
+        {
+            UpdateEqualizerFilters();
+        }
+
         public void Play(PlaylistItem track)
         {
             if (track == null || _isDisposed) return;
@@ -182,6 +206,9 @@ namespace MediaFusionPlayer.Infrastructure.Services
             IsVideo = isVideo;
             _videoPath = isVideo ? track.FilePath : null;
 
+            // Для видео не включаем эквалайзер (звук идет через NAudio, но эквалайзер выключим)
+            bool useEqualizer = !isVideo;
+
             try
             {
                 if (!isResumingSameTrack)
@@ -191,6 +218,13 @@ namespace MediaFusionPlayer.Infrastructure.Services
                     _currentFilePath = track.FilePath;
                     _currentTrack = track;
                     _trackFinished = false;
+
+                    // Создаем цепочку с эквалайзером если нужно
+                    if (useEqualizer)
+                    {
+                        _equalizerProvider = new EqualizingSampleProvider(_audioFile);
+                        UpdateEqualizerFilters();
+                    }
                 }
                 else if (_audioFile != null)
                 {
@@ -201,7 +235,13 @@ namespace MediaFusionPlayer.Infrastructure.Services
                 if (_wavePlayer == null)
                 {
                     _wavePlayer = new WaveOutEvent();
-                    _wavePlayer.Init(_audioFile);
+
+                    // Используем либо эквалайзер, либо чистый аудиофайл
+                    var source = useEqualizer && _equalizerProvider != null
+                        ? (ISampleProvider)_equalizerProvider
+                        : _audioFile.ToSampleProvider();
+
+                    _wavePlayer.Init(source);
                     _wavePlayer.Volume = Volume;
                     _wavePlayer.PlaybackStopped += OnPlaybackStopped;
                 }
@@ -328,6 +368,7 @@ namespace MediaFusionPlayer.Infrastructure.Services
 
             _audioFile?.Dispose();
             _audioFile = null;
+            _equalizerProvider = null;
         }
 
         public void Dispose()
@@ -346,7 +387,52 @@ namespace MediaFusionPlayer.Infrastructure.Services
                     _positionTimer.Stop();
                     _positionTimer = null;
                 }
+
+                _equalizerService.BandsChanged -= OnEqualizerBandsChanged;
             }
+        }
+    }
+
+    // Вспомогательный класс для применения эквалайзера
+    internal class EqualizingSampleProvider : ISampleProvider
+    {
+        private readonly ISampleProvider _source;
+        private BiQuadFilter[] _filters;
+
+        public EqualizingSampleProvider(ISampleProvider source)
+        {
+            _source = source;
+            _filters = Array.Empty<BiQuadFilter>();
+            WaveFormat = source.WaveFormat;
+        }
+
+        public WaveFormat WaveFormat { get; }
+
+        public void UpdateFilters(BiQuadFilter[] filters)
+        {
+            _filters = filters;
+        }
+
+        public int Read(float[] buffer, int offset, int count)
+        {
+            int samplesRead = _source.Read(buffer, offset, count);
+
+            if (_filters.Length > 0)
+            {
+                for (int i = 0; i < samplesRead; i++)
+                {
+                    float sample = buffer[offset + i];
+
+                    foreach (var filter in _filters)
+                    {
+                        sample = filter.Transform(sample);
+                    }
+
+                    buffer[offset + i] = Math.Clamp(sample, -1.0f, 1.0f);
+                }
+            }
+
+            return samplesRead;
         }
     }
 }
