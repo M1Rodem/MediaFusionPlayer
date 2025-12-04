@@ -15,7 +15,7 @@ namespace MediaFusionPlayer.Presentation.ViewModels
         private readonly IFileService _fileService;
         private readonly IPlaylistService _playlistService;
         private readonly IMediaPlayerService _mediaPlayer;
-        private readonly IVideoPlayerService _videoService; // НОВОЕ
+        private readonly IVideoPlayerService _videoService;
 
         public ObservableCollection<PlaylistItem> Playlist => _playlistService.Items;
 
@@ -30,7 +30,7 @@ namespace MediaFusionPlayer.Presentation.ViewModels
         public TimeSpan CurrentPosition
         {
             get => _currentPosition;
-            set => SetProperty(ref _currentPosition, value);
+            set => SetProperty(ref _currentPosition, value); // TwoWay binding теперь работает
         }
 
         public TimeSpan CurrentDuration => CurrentTrack?.Duration ?? TimeSpan.Zero;
@@ -46,7 +46,14 @@ namespace MediaFusionPlayer.Presentation.ViewModels
             }
         }
 
-        // НОВОЕ: свойства для видео
+        // НОВОЕ: для кнопки Play/Pause
+        private bool _isPlaying;
+        public bool IsPlaying
+        {
+            get => _isPlaying;
+            private set => SetProperty(ref _isPlaying, value);
+        }
+
         private bool _isVideo;
         public bool IsVideo
         {
@@ -61,7 +68,7 @@ namespace MediaFusionPlayer.Presentation.ViewModels
             private set => SetProperty(ref _videoPath, value);
         }
 
-        public IVideoPlayerService VideoService => _videoService; // Для привязки в XAML
+        public IVideoPlayerService VideoService => _videoService;
 
         public ICommand AddFilesCommand { get; }
         public ICommand PlayPauseCommand { get; }
@@ -73,7 +80,7 @@ namespace MediaFusionPlayer.Presentation.ViewModels
             IFileService fileService,
             IPlaylistService playlistService,
             IMediaPlayerService mediaPlayer,
-            IVideoPlayerService videoService) // НОВЫЙ параметр
+            IVideoPlayerService videoService)
         {
             _fileService = fileService;
             _playlistService = playlistService;
@@ -86,28 +93,26 @@ namespace MediaFusionPlayer.Presentation.ViewModels
             NextCommand = new RelayCommand(_ => _playlistService.MoveToNext());
             PreviousCommand = new RelayCommand(_ => _playlistService.MoveToPrevious());
 
-            // Подписки
             _playlistService.CurrentTrackChanged += OnPlaylistTrackChanged;
-            _mediaPlayer.PlaybackStateChanged += (s, e) => CommandManager.InvalidateRequerySuggested();
+            _mediaPlayer.PlaybackStateChanged += OnPlaybackStateChanged;
             _mediaPlayer.PositionChanged += OnPositionChanged;
             _mediaPlayer.TrackFinished += (s, e) => _playlistService.MoveToNext();
-            _mediaPlayer.IsSeekingChanged += (s, seeking) => { };
-
-            // НОВОЕ: подписка на изменение типа медиа
             _mediaPlayer.IsVideoChanged += OnIsVideoChanged;
+        }
+
+        private void OnPlaybackStateChanged(object? sender, MediaPlaybackState state)
+        {
+            IsPlaying = state == MediaPlaybackState.Playing;
+            CommandManager.InvalidateRequerySuggested();
         }
 
         private void OnIsVideoChanged(object? sender, bool isVideo)
         {
             IsVideo = isVideo;
-
             if (isVideo && !string.IsNullOrEmpty(_mediaPlayer.VideoPath))
             {
                 VideoPath = _mediaPlayer.VideoPath;
-                // Запускаем видео через VideoService
                 _videoService.PlayVideo(_mediaPlayer.VideoPath);
-
-                // Синхронизируем позицию
                 _videoService.SeekVideo(_mediaPlayer.Position);
             }
             else
@@ -120,8 +125,6 @@ namespace MediaFusionPlayer.Presentation.ViewModels
         private void OnPlaylistTrackChanged(PlaylistItem? track)
         {
             CurrentTrack = track;
-
-            // Сбрасываем позицию ДО Play() — это важно!
             CurrentPosition = TimeSpan.Zero;
             OnPropertyChanged(nameof(CurrentDuration));
 
@@ -131,25 +134,13 @@ namespace MediaFusionPlayer.Presentation.ViewModels
 
         private void OnPositionChanged(object? sender, TimeSpan position)
         {
-            // Защита от рекурсии при dragging + потокобезопасность
-            if (_mediaPlayer.IsSeeking)
-                return;
+            if (_mediaPlayer.IsSeeking) return;
 
-            if (!Application.Current.Dispatcher.CheckAccess())
-            {
-                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
-                    CurrentPosition = position));
-            }
-            else
-            {
-                CurrentPosition = position;
-            }
+            // Просто устанавливаем — TwoWay binding сам обновит UI
+            CurrentPosition = position;
 
-            // Синхронизируем видео если оно играет
             if (IsVideo && _videoService.IsPlaying)
-            {
                 _videoService.SeekVideo(position);
-            }
         }
 
         private void PlayPause()
@@ -196,11 +187,11 @@ namespace MediaFusionPlayer.Presentation.ViewModels
             _mediaPlayer.Seek(position);
             _mediaPlayer.EndSeek(position);
 
-            // Синхронизируем видео
             if (IsVideo)
-            {
                 _videoService.SeekVideo(position);
-            }
+
+            // Обновляем UI мгновенно
+            CurrentPosition = position;
         }
     }
 }

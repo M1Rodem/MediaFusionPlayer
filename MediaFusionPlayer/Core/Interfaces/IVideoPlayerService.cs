@@ -9,6 +9,7 @@ namespace MediaFusionPlayer.Core.Interfaces
         bool IsInitialized { get; }
         string? CurrentVideoPath { get; }
         LibVLC? LibVLC { get; }
+        MediaPlayer? MediaPlayer { get; }
 
         void Initialize();
         void PlayVideo(string videoPath);

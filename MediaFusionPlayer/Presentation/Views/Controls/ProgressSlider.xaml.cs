@@ -10,11 +10,11 @@ namespace MediaFusionPlayer.Presentation.Views.Controls
     {
         public static readonly DependencyProperty CurrentPositionProperty =
             DependencyProperty.Register(nameof(CurrentPosition), typeof(TimeSpan), typeof(ProgressSlider),
-                new PropertyMetadata(TimeSpan.Zero, OnPositionChanged));
+                new FrameworkPropertyMetadata(TimeSpan.Zero, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, OnValueChanged));
 
         public static readonly DependencyProperty CurrentDurationProperty =
             DependencyProperty.Register(nameof(CurrentDuration), typeof(TimeSpan), typeof(ProgressSlider),
-                new PropertyMetadata(TimeSpan.Zero, OnPositionChanged));
+                new PropertyMetadata(TimeSpan.Zero, OnValueChanged));
 
         public TimeSpan CurrentPosition
         {
@@ -30,97 +30,83 @@ namespace MediaFusionPlayer.Presentation.Views.Controls
 
         public event EventHandler<TimeSpan>? SeekRequested;
 
-        private bool _isDragging = false;
+        private bool _isDragging;
 
         public ProgressSlider()
         {
             InitializeComponent();
-            Loaded += (s, e) => CompositionTarget.Rendering += OnRender;
-            Unloaded += (s, e) => CompositionTarget.Rendering -= OnRender;
-            MouseEnter += (s, e) => Thumb.Visibility = Visibility.Visible;
-            MouseLeave += (s, e) => { if (!_isDragging) Thumb.Visibility = Visibility.Collapsed; };
+            Loaded += (s, e) => CompositionTarget.Rendering += OnRendering;
+            Unloaded += (s, e) => CompositionTarget.Rendering -= OnRendering;
         }
 
-        private void OnRender(object? sender, EventArgs e)
+        private void OnRendering(object? sender, EventArgs e)
         {
-            if (!_isDragging && CurrentDuration > TimeSpan.Zero)
-            {
-                UpdateProgress();
-            }
+            if (!_isDragging) UpdateVisual();
         }
 
-        private static void OnPositionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        private static void OnValueChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
-            if (d is ProgressSlider slider && !slider._isDragging)
-                slider.UpdateProgress();
+            if (d is ProgressSlider ps && !ps._isDragging) ps.UpdateVisual();
         }
 
-        private void UpdateProgress()
+        private void UpdateVisual()
         {
             if (CurrentDuration == TimeSpan.Zero)
             {
                 ProgressFill.Width = 0;
-                Thumb.Margin = new Thickness(-7, 0, 0, 0);
+                Thumb.Margin = new Thickness(-8, 0, 0, 0);
                 return;
             }
 
-            double progress = CurrentPosition.TotalSeconds / CurrentDuration.TotalSeconds;
-            progress = Math.Clamp(progress, 0.0, 1.0);
-
-            double trackWidth = TrackGrid.ActualWidth;
-            double fillWidth = progress * trackWidth;
-            double thumbX = fillWidth - 7; // центр thumb
-
-            ProgressFill.Width = fillWidth;
-            Thumb.Margin = new Thickness(thumbX, 0, 0, 0);
+            double ratio = Math.Clamp(CurrentPosition.TotalSeconds / CurrentDuration.TotalSeconds, 0, 1);
+            double w = TrackGrid.ActualWidth;
+            double fill = ratio * w;
+            ProgressFill.Width = fill;
+            Thumb.Margin = new Thickness(fill - 8, 0, 0, 0);
         }
 
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
         {
-            base.OnMouseLeftButtonDown(e);
+            if (!TrackGrid.IsMouseOver) return;
             CaptureMouse();
             _isDragging = true;
             Thumb.Visibility = Visibility.Visible;
-            SeekToMouse(e.GetPosition(TrackGrid));
+            Seek(e.GetPosition(TrackGrid));
             e.Handled = true;
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
-            base.OnMouseMove(e);
-            if (_isDragging)
-            {
-                SeekToMouse(e.GetPosition(TrackGrid));
-            }
+            if (_isDragging) Seek(e.GetPosition(TrackGrid));
+            Thumb.Visibility = TrackGrid.IsMouseOver ? Visibility.Visible : Visibility.Collapsed;
         }
 
         protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
         {
-            base.OnMouseLeftButtonUp(e);
             if (_isDragging)
             {
-                SeekToMouse(e.GetPosition(TrackGrid));
+                Seek(e.GetPosition(TrackGrid));
                 ReleaseMouseCapture();
                 _isDragging = false;
-                SeekRequested?.Invoke(this, CurrentPosition);
-                if (!IsMouseOver) Thumb.Visibility = Visibility.Collapsed;
+                if (!TrackGrid.IsMouseOver) Thumb.Visibility = Visibility.Collapsed;
             }
         }
 
-        private void SeekToMouse(Point pos)
+        private void Seek(Point p)
         {
-            double x = Math.Clamp(pos.X, 0, TrackGrid.ActualWidth);
-            double ratio = x / TrackGrid.ActualWidth;
-            TimeSpan newPos = TimeSpan.FromSeconds(ratio * CurrentDuration.TotalSeconds);
-            CurrentPosition = newPos;
-            UpdateProgress(); // мгновенное обновление
+            double x = Math.Clamp(p.X, 0, TrackGrid.ActualWidth);
+            double ratio = TrackGrid.ActualWidth > 0 ? x / TrackGrid.ActualWidth : 0;
+            TimeSpan pos = TimeSpan.FromSeconds(ratio * CurrentDuration.TotalSeconds);
+            CurrentPosition = pos;
+            UpdateVisual();
+            SeekRequested?.Invoke(this, pos);
         }
 
-        protected override Size ArrangeOverride(Size arrangeBounds)
+        protected override Size ArrangeOverride(Size size)
         {
-            var size = base.ArrangeOverride(arrangeBounds);
-            UpdateProgress();
-            return size;
+            var r = base.ArrangeOverride(size);
+            UpdateVisual();
+            return r;
         }
     }
 }

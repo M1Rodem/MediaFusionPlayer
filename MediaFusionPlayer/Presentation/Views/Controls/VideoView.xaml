@@ -2,23 +2,21 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             mc:Ignorable="d"
-             d:DesignHeight="250" d:DesignWidth="900"
-             ClipToBounds="True"
-             Background="Black">
+             xmlns:converters="clr-namespace:MediaFusionPlayer.Presentation.Converters"
+             Background="Black"
+             Width="1200" Height="250"
+             MaxWidth="1200" MaxHeight="250"
+             ClipToBounds="True">
 
-    <!-- Жесткий контейнер -->
-    <Border x:Name="VideoContainer" 
-            ClipToBounds="True"
-            Background="Black"
-            CornerRadius="8">
+    <UserControl.Resources>
+        <converters:BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </UserControl.Resources>
 
-        <!-- Video View от VLC -->
-        <vlc:VideoView x:Name="VideoControl"
-                       HorizontalAlignment="Stretch"
-                       VerticalAlignment="Stretch"
-                       Loaded="VideoControl_Loaded"/>
-    </Border>
+    <Grid>
+        <Image Source="{Binding CurrentTrack.CoverArt}" Stretch="UniformToFill"/>
+        <vlc:VideoView MediaPlayer="{Binding VideoMediaPlayer}"
+                       Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}"/>
+        <Border Background="Transparent"
+                Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}"/>
+    </Grid>
 </UserControl>
